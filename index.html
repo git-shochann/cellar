@@ -174,7 +174,7 @@ ul{list-style:none}
   var ink = document.querySelector('.ink');
   var tabs = [].slice.call(document.querySelectorAll('.tab'));
   var current = tabs[0].dataset.panel;
-  var marked = null, ticking = false;
+  var marked = null, ticking = false, staged = [];
 
   function panelOf(id) { return document.getElementById('panel-' + id); }
   function chipsOf(id) { return document.querySelector('.chips[data-for="' + id + '"]'); }
@@ -221,6 +221,7 @@ ul{list-style:none}
     var top = document.querySelector('.top').offsetHeight;
     if (changed && window.scrollY > top) window.scrollTo(0, top);
     mark();
+    staged = stage(id);
     if (!changed) return;
     if (still || !animate) return;
     gsap.fromTo(panelOf(id), { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: .4, ease: 'power2.out', clearProps: 'all' });
@@ -243,11 +244,34 @@ ul{list-style:none}
   window.addEventListener('resize', function () { moveInk(false); });
   window.addEventListener('scroll', onScroll, { passive: true });
 
-  // Draw each heading rule once, when its category first comes into view.
+  // Each category appears once, the first time it scrolls into view.
+  var PARTS = 'h2, .row, .foot, .shot';
   var seen = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); seen.unobserve(e.target); } });
-  });
-  [].forEach.call(document.querySelectorAll('.group'), function (g) { seen.observe(g); });
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      seen.unobserve(e.target);
+      e.target.classList.add('in');
+      if (!e.target.waiting) return;
+      e.target.waiting = false;
+      gsap.to(e.target.querySelectorAll(PARTS), { autoAlpha: 1, y: 0, duration: .4, ease: 'power2.out', stagger: .03, clearProps: 'all' });
+    });
+  }, { rootMargin: '0px 0px -8% 0px' });
+
+  // Hide the categories below the fold so they can appear on scroll; returns the parts already on screen.
+  function stage(id) {
+    var onScreen = [];
+    [].forEach.call(panelOf(id).querySelectorAll('.group'), function (g) {
+      if (g.staged) return;
+      g.staged = true;
+      var parts = [].slice.call(g.querySelectorAll(PARTS));
+      if (still) { seen.observe(g); return; }
+      var below = parts.filter(function (el) { return el.getBoundingClientRect().top >= window.innerHeight; });
+      parts.forEach(function (el) { if (below.indexOf(el) < 0) onScreen.push(el); });
+      if (below.length === parts.length) { g.waiting = true; gsap.set(parts, { autoAlpha: 0, y: 10 }); }
+      seen.observe(g);
+    });
+    return onScreen;
+  }
 
   // Deep link: #food opens the Food tab, #whisky scrolls to that category.
   var hash = location.hash.slice(1);
@@ -261,13 +285,12 @@ ul{list-style:none}
 
   // Opening sequence, once. Reading stays still after this.
   if (still) return;
-  var first = panelOf(current).querySelector('.group');
   gsap.timeline({ defaults: { ease: 'power2.out' } })
     .from('.logo', { autoAlpha: 0, y: 12, duration: .7 })
     .from('.tab, .tax', { autoAlpha: 0, y: 8, duration: .45, stagger: .07, clearProps: 'opacity,visibility,transform' }, '-=.35')
     .from(ink, { scaleX: 0, transformOrigin: 'left', duration: .5 }, '-=.3')
     .from(chipsOf(current).children, { autoAlpha: 0, x: 10, duration: .4, stagger: .03, clearProps: 'all' }, '-=.35')
-    .from(first.querySelectorAll('h2, .row'), { autoAlpha: 0, y: 10, duration: .4, stagger: .035, clearProps: 'all' }, '-=.3');
+    .from(staged, { autoAlpha: 0, y: 10, duration: .4, stagger: .03, clearProps: 'all' }, '-=.3');
 })();
 </script>
 </body>
